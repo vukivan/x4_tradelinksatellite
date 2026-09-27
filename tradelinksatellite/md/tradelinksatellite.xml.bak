@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mdscript name="TradeLinkSatellite" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <cues>
+    <cue name="TLS_Main">
+      <conditions>
+        <check_any>
+          <event_cue_signalled cue="md.Setup.GameStart" />
+          <event_player_created/>
+          <event_cue_signalled/>
+        </check_any>
+      </conditions>
+      <cues>
+        <cue name="TLS_Main_AddBlueprint">
+          <delay exact="5s"/>
+          <actions>
+			<add_blueprints wares="ware.trade_link_satellite"/>
+          </actions>
+        </cue>
+
+        <cue name="TLS_Main_SatDeployed" instantiate="true">
+          <conditions>
+            <event_satellite_launched space="player.galaxy"/>
+            <check_value value="event.param2.isplayerowned"/>
+            <check_value value="event.param2.macro == macro.trade_link_satellite_macro"/>
+          </conditions>
+          <actions>
+            <signal_cue_instantly cue="TLS_Main_Scan" param="[event.param2.sector]"/>
+          </actions>
+        </cue>
+
+        <cue name="TLS_Main_Scan" instantiate="true" namespace="this">
+          <conditions>
+            <event_cue_signalled/>
+          </conditions>
+          <actions>
+            <create_group groupname="$sectors"/>
+            <do_if value="event.param.{1}">
+              <add_to_group groupname="$sectors" object="event.param.{1}"/>
+            </do_if>
+            <do_else>
+              <find_sector name="$knownSectors" multiple="true" space="player.galaxy" known="true"/>
+              <do_all exact="$knownSectors.count" counter="$i">
+                <find_object owner="faction.player" name="$sat" functional="true" space="$knownSectors.{$i}">
+                  <match_any>
+					<match macro="macro.trade_link_satellite_macro"/>
+                  </match_any>
+                </find_object>
+                <do_if value="$sat">
+                  <add_to_group groupname="$sectors" object="$knownSectors.{$i}"/>
+                </do_if>
+              </do_all>
+              <remove_value name="$knownSectors"/>
+              <remove_value name="$sat"/>
+            </do_else>
+          </actions>
+          <cues>
+            <cue name="TLS_Main_Scan_Loop">
+              <delay exact="2ms"/>
+              <actions>
+                <do_if value="$sectors.count">
+                  <signal_cue_instantly cue="md.TradeLinkSatellite.TLS_Main_Scan_Process" param="[$sectors.{1}]"/>
+                  <remove_from_group group="$sectors" object="$sectors.{1}"/>
+                  <reset_cue cue="this"/>
+                </do_if>
+                <do_else>
+                  <remove_value name="$sectors"/>
+                </do_else>
+              </actions>
+            </cue>
+          </cues>
+        </cue>
+
+        <cue name="TLS_Main_Scan_Process" instantiate="true" namespace="this">
+          <conditions>
+            <event_cue_signalled/>
+          </conditions>
+          <delay min="1s" max="10s"/>
+          <actions>
+            <set_value name="$sector" exact="event.param.{1}"/>
+
+            <!-- FIRST: Verify if a custom satellite actually exists here before doing anything -->
+            <find_object owner="faction.player" name="$CheckSat" functional="true" space="$sector">
+              <match macro="macro.trade_link_satellite_macro"/>
+            </find_object>
+
+            <!-- ONLY execute if the satellite is still physically present and working -->
+            <do_if value="$CheckSat">
+              <create_group groupname="$stations"/>
+
+              <find_station multiple="true" groupname="$stations" known="true" space="$sector">
+                <match owner="faction.player" negate="true"/>
+              </find_station>
+
+              <do_all exact="$stations.count" counter="$j">
+                <do_if value="$stations.{$j}.relationto.{faction.player} gt -0.01 and not $stations.{$j}.haspermanenttradesubscription">
+                  <add_trade_subscription object="$stations.{$j}"/>
+                </do_if>
+                <do_else>
+                  <do_if value="$stations.{$j}.hastradesubscription and $stations.{$j}.owner.relationto.{faction.player} le -0.01">
+                    <remove_trade_subscription object="$stations.{$j}"/>
+                    <do_if value="$stations.{$j}.relationto.{faction.player} ge 0">
+                      <add_trade_subscription object="$stations.{$j}" duration="1h"/>
+                    </do_if>
+                  </do_if>
+                </do_else>
+              </do_all>
+            </do_if>
+          </actions>
+        </cue>
+
+        <cue name="TLS_Main_Player_Collected" instantiate="true" namespace="this">
+          <conditions>
+              <event_player_collected_ammo/>
+            <check_value value="event.param == macro.trade_link_satellite_macro"/>
+          </conditions>
+          <actions>
+            <signal_cue_instantly cue="TLS_Main_RemoveSubs" param="player.ship.sector"/>
+          </actions>
+        </cue>
+
+        <cue name="TLS_Main_Destroyed" instantiate="true" namespace="this">
+          <conditions>
+            <event_player_owned_destroyed/>
+            <check_value value="event.param.macro == macro.trade_link_satellite_macro"/>
+          </conditions>
+          <actions>
+            <signal_cue_instantly cue="TLS_Main_RemoveSubs" param="event.param.sector"/>
+          </actions>
+        </cue>
+
+        <cue name="TLS_Main_RemoveSubs" instantiate="true" namespace="this">
+          <conditions>
+            <event_cue_signalled/>
+          </conditions>
+          <delay exact="1s"/>
+          <actions>
+            <set_value name="$sector" exact="event.param"/>
+            <find_object owner="faction.player" multiple="true" functional="true" groupname="$sats" space="$sector">
+              <match_any>
+				<match macro="macro.trade_link_satellite_macro"/>
+              </match_any>
+            </find_object>
+
+            <do_if value="not $sats.count">
+              <find_station multiple="true" name="$stations" space="$sector">
+                <match owner="faction.player" negate="true"/>
+              </find_station>
+
+              <do_all exact="$stations.count" counter="$j">
+                <do_if value="$stations.{$j}.haspermanenttradesubscription and not faction.player.haslicence.tradesubscription.{$stations.{$j}.trueowner}">
+                  <remove_trade_subscription object="$stations.{$j}"/>
+
+                  <do_if value="$stations.{$j}.relationto.{faction.player} ge 0">
+                    <add_trade_subscription object="$stations.{$j}" duration="1h"/>
+                  </do_if>
+                </do_if>
+              </do_all>
+            </do_if>
+          </actions>
+        </cue>
+
+        <cue name="TLS_Main_RemoveSubsDeinstall" instantiate="true">
+          <conditions>
+            <event_cue_signalled/>
+          </conditions>
+          <actions>
+            <find_sector name="$sectors" multiple="true" space="player.galaxy" known="true"/>
+            <do_all exact="$sectors.count" counter="$i">
+              <set_value name="$sector" exact="$sectors.{$i}"/>
+
+              <find_object owner="faction.player" functional="true" name="$sat" space="$sector">
+                <match_any>
+				  <match macro="macro.trade_link_satellite_macro"/>
+                </match_any>
+              </find_object>
+
+              <do_if value="$sat">
+                <find_station multiple="true" name="$stations" space="$sector">
+                  <match owner="faction.player" negate="true"/>
+                </find_station>
+
+                <do_all exact="$stations.count" counter="$j">
+                  <do_if value="$stations.{$j}.haspermanenttradesubscription">
+                    <remove_trade_subscription object="$stations.{$j}"/>
+
+                    <do_if value="$stations.{$j}.relationto.{faction.player} ge 0">
+                      <add_trade_subscription object="$stations.{$j}" duration="1h"/>
+                    </do_if>
+                  </do_if>
+                </do_all>
+              </do_if>
+
+            </do_all>
+
+          </actions>
+        </cue>
+      </cues>
+    </cue>
+  </cues>
+</mdscript>

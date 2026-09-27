@@ -1,0 +1,10 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+
+<diff>
+  <add sel="/language">
+    <page id="885422" title="TradeLinkSatellite" descr="Trade Link Satellite text" voice="no">
+	  <t id="1">Trade Link {20201,20301}</t>
+	  <t id="2">Establishes permanent trade link with all discovered stations in sector.</t>
+    </page>
+  </add>
+</diff>

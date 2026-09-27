@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mdscript name="TradeLinkSatellite" xmlns:xsi="http://w3.org">
+  <cues>
+    <!-- Setup and Blueprints Initialization -->
+    <cue name="TLS_Init_TradeLink">
+      <conditions>
+        <check_any>
+          <event_cue_signalled cue="md.Setup.GameStart"/>
+          <event_player_created/>
+          <event_game_loaded/>
+        </check_any>
+      </conditions>
+      <actions>
+        <add_blueprints wares="ware.trade_link_satellite"/>
+
+        <do_if value="not md.TradeLinkSatellite.TLS_Init_TradeLink.$TLS_ManagedStations?">
+          <set_value name="md.TradeLinkSatellite.TLS_Init_TradeLink.$TLS_ManagedStations" exact="table[]"/>
+        </do_if>
+
+        <do_if value="not md.TradeLinkSatellite.TLS_Init_TradeLink.$TLS_ActiveSectors?">
+          <set_value name="md.TradeLinkSatellite.TLS_Init_TradeLink.$TLS_ActiveSectors" exact="[]"/>
+        </do_if>
+
+        <do_if value="not md.TradeLinkSatellite.TLS_Init_TradeLink.$TLS_DebugMode?">
+          <set_value name="md.TradeLinkSatellite.TLS_Init_TradeLink.$TLS_DebugMode" exact="false"/>
+        </do_if>
+
+      </actions>
+    </cue>
+
+    <cue name="TLS_Sector_Update_Trigger" instantiate="true">
+      <conditions>
+        <check_any>
+          <event_satellite_launched space="player.galaxy"/>
+          <event_player_owned_destroyed/>
+          <event_player_collected_ammo/>
+          <event_ui_triggered screen="'InteractMenu'" control="'perform'"/>
+        </check_any>
+        <check_any>
+          <!-- BRANCH 1: TLS deployed -->
+          <check_value value="event.name == 'event_satellite_launched' and event.param2.isplayerowned and event.param2.macro == macro.trade_link_satellite_macro"/>
+          <!-- BRANCH 2: TLS collected -->
+          <check_value value="event.name == 'event_player_collected_ammo' and event.param == macro.trade_link_satellite_macro"/>
+          <!-- BRANCH 3: TLS destroyed -->
+          <check_value value="event.name == 'event_player_owned_destroyed' and event.param.isclass.satellite and event.param.macro == macro.trade_link_satellite_macro"/>
+          <!-- BRANCH 4: Activated or deactivated... don't know, don't care -->
+          <check_value value="event.name == 'event_ui_triggered' and event.param3 == 'detach'"/>
+        </check_any>
+      </conditions>
+      <actions>
+        <set_value name="$TargetSector" exact="null"/>
+        <debug_text text="'Event: %1 | TargetSector initialized to null'.[event.name]"/>
+
+        <!-- BRANCH 1: TLS deployed -->
+        <do_if value="event.name == 'event_satellite_launched'">
+          <set_value name="$TargetSector" exact="event.param2.sector"/>
+          <debug_text text="'Event: %1 | Custom TLS TargetSector set to: %2'.[event.name, $TargetSector.name]"/>
+          <signal_cue_instantly cue="TLS_Manage_Active_Sectors_List" param="$TargetSector"/>
+        </do_if>
+
+        <!-- BRANCH 2: TLS collected -->
+        <do_elseif value="event.name == 'event_player_collected_ammo'">
+          <do_if value="event.param2.sector? and event.param2.sector.exists">
+            <set_value name="$TargetSector" exact="event.param2.sector"/>
+          </do_if>
+          <do_elseif value="event.param2.container? and event.param2.container.sector? and event.param2.container.sector.exists">
+            <set_value name="$TargetSector" exact="event.param2.container.sector"/>
+          </do_elseif>
+          <do_else>
+            <set_value name="$TargetSector" exact="player.ship.sector"/>
+          </do_else>
+          <debug_text text="'Event: %1 | Custom TLS Collected in sector: %2'.[event.name, $TargetSector.name]"/>
+          <!-- Note, that we don't really have to do this here, but it keeps the sector list clean -->
+          <signal_cue_instantly cue="TLS_Manage_Active_Sectors_List" param="$TargetSector"/>
+        </do_elseif>
+
+        <!-- BRANCH 3: TLS destroyed -->
+        <do_elseif value="event.name == 'event_player_owned_destroyed'">
+          <set_value name="$TargetSector" exact="event.param.sector"/>
+          <debug_text text="'Event: %1 | TargetSector set from event.param.sector to: %2'.[event.name, $TargetSector.name]"/>
+          <signal_cue_instantly cue="TLS_Manage_Active_Sectors_List" param="$TargetSector"/>
+        </do_elseif>
+
+        <!-- BRANCH 4: Activated or deactivated, and yes, this is called on EVERY player action that involves activation and deactivation -->
+        <do_elseif value="event.name == 'event_ui_triggered'">
+          <debug_text text="'UI DEACTIVATE INTERCEPTED | Scanning tracking registry array list for changes: %1'.[md.TradeLinkSatellite.TLS_Init_TradeLink.$TLS_ActiveSectors]"/>
+          <!-- Yeah... every sector with my special little satellite I hope this doesn't blow up -->
+          <do_for_each name="$RegisteredSector" in="md.TradeLinkSatellite.TLS_Init_TradeLink.$TLS_ActiveSectors">
+            <signal_cue_instantly cue="TLS_Process_Sector_Subscriptions" param="$RegisteredSector"/>
+          </do_for_each>
+        </do_elseif>
+      </actions>
+    </cue>
+
+    <!-- The Dedicated List Manager Switchboard (Handles tracking list synchronization natively) -->
+    <cue name="TLS_Manage_Active_Sectors_List" instantiate="true">
+      <conditions>
+        <event_cue_signalled/>
+      </conditions>
+      <actions>
+        <set_value name="$CheckSector" exact="event.param"/>
+
+        <find_object name="$PhysicalSats" owner="faction.player" multiple="true" space="$CheckSector">
+          <match macro="macro.trade_link_satellite_macro"/>
+        </find_object>
+
+        <set_value name="$ListIndex" exact="md.TradeLinkSatellite.TLS_Init_TradeLink.$TLS_ActiveSectors.indexof.{$CheckSector}"/>
+
+        <!-- There's at least one TLS in the sector -->
+        <do_if value="$PhysicalSats.count gt 0">
+          <!-- The sector is not in the list-->
+          <do_if value="$ListIndex == 0">
+            <append_to_list name="md.TradeLinkSatellite.TLS_Init_TradeLink.$TLS_ActiveSectors" exact="$CheckSector"/>
+            <debug_text text="'LIST MANAGER | Satellite verified. Appended sector %1 to tracking registry. Count: %2'.[$CheckSector.name, md.TradeLinkSatellite.TLS_Init_TradeLink.$TLS_ActiveSectors.count]"/>
+          </do_if>
+          <!-- The sector is in the list -->
+          <do_else>
+            <debug_text text="'LIST MANAGER | Satellite verified. Sector %1 already in tracking registry. Count: %2'.[$CheckSector.name, md.TradeLinkSatellite.TLS_Init_TradeLink.$TLS_ActiveSectors.count]"/>
+          </do_else>
+        </do_if>
+
+        <!-- No TLS in the sector -->
+        <do_else>
+          <!-- The sector is on the list and should be removed -->
+          <do_if value="$ListIndex gt 0">
+            <remove_from_list name="md.TradeLinkSatellite.TLS_Init_TradeLink.$TLS_ActiveSectors" index="$ListIndex"/>
+            <debug_text text="'LIST MANAGER | Zero satellites remain. Removed sector %1 from tracking registry. Count: %2'.[$CheckSector.name, md.TradeLinkSatellite.TLS_Init_TradeLink.$TLS_ActiveSectors.count]"/>
+          </do_if>
+          <!-- The sector is not on the list, so this is probably indication that the state machine is broken, or a wild race condition appeared.-->
+          <do_else>
+              <debug_text text="'LIST MANAGER | Zero satellites remain. Sector %1 not in tracking registry. You're a dummy, how did you get here? Count: %2'.[$CheckSector.name, md.TradeLinkSatellite.TLS_Init_TradeLink.$TLS_ActiveSectors.count]"/>
+          </do_else>
+        </do_else>
+
+        <remove_value name="$PhysicalSats"/>
+        <remove_value name="$ListIndex"/>
+
+        <!-- Run the idempotent process which handles station trade subscriptions -->
+        <signal_cue_instantly cue="TLS_Process_Sector_Subscriptions" param="$CheckSector"/>
+        <remove_value name="$CheckSector"/>
+      </actions>
+    </cue>
+
+    <!-- Handle station trade subscriptions -->
+    <cue name="TLS_Process_Sector_Subscriptions" instantiate="true" namespace="this">
+      <conditions>
+        <event_cue_signalled/>
+      </conditions>
+      <delay exact="1s"/>
+      <actions>
+        <set_value name="$CurrentSector" exact="event.param"/>
+        <debug_text text="'Processing loop pass for sector: %1 after 1s settling delay'.[$CurrentSector.name]"/>
+
+        <!-- Grab all physical instances of the custom satellite in the target sector -->
+        <find_object name="$AllTradeLinkSats" owner="faction.player" multiple="true" space="$CurrentSector">
+          <match macro="macro.trade_link_satellite_macro"/>
+        </find_object>
+
+        <!-- Check if an active component deployment layout is verified in this system -->
+        <set_value name="$HasActiveSatellite" exact="false"/>
+        <do_for_each name="$Sat" in="$AllTradeLinkSats">
+          <do_if value="$Sat.isactive">
+            <set_value name="$HasActiveSatellite" exact="true"/>
+            <break/>
+          </do_if>
+        </do_for_each>
+        <remove_value name="$AllTradeLinkSats"/>
+
+        <!-- Grab all local stations belonging to other factions -->
+        <find_station name="$LocalStations" space="$CurrentSector" multiple="true">
+          <match owner="faction.player" negate="true"/>
+        </find_station>
+
+        <!-- RAW ARRAY / LIST VERIFICATION DIAGNOSTIC PRINT -->
+        <debug_text text="'DIAGNOSTIC: Sector Sweep Finished | Raw Stations Array: %1 | Total Found: %2 | Has Active Satellite: %3'.[$LocalStations, $LocalStations.count, $HasActiveSatellite]"/>
+
+        <!-- CASE A: An active custom Trade Link Satellite is verified in the sector -->
+        <do_if value="$HasActiveSatellite">
+          <debug_text text="'CASE A: Active Trade Link Satellite state verified in sector: %1.'.[$CurrentSector.name]"/>
+          <do_for_each name="$Station" in="$LocalStations">
+            <do_if value="not $Station.haspermanenttradesubscription">
+              <add_trade_subscription object="$Station"/>
+              <set_value name="md.TradeLinkSatellite.TLS_Init_TradeLink.$TLS_ManagedStations.{$Station}" exact="true"/>
+              <debug_text text="'CASE A: Added permanent trade subscription and registered station in script table: %1'.[$Station.name]"/>
+            </do_if>
+          </do_for_each>
+        </do_if>
+
+        <!-- CASE B: Trade Link Satellite is Absent, Destroyed, or Deactivated -->
+        <do_else>
+          <debug_text text="'CASE B: No active custom satellites found in sector: %1. Reverting subscriptions.'.[$CurrentSector.name]"/>
+          <do_for_each name="$Station" in="$LocalStations">
+            <do_if value="not faction.player.haslicence.tradesubscription.{$Station.trueowner}">
+              <set_value name="$IsModManaged" exact="md.TradeLinkSatellite.TLS_Init_TradeLink.$TLS_ManagedStations.{$Station}?"/>
+              <debug_text text="'CASE B Check | Station: %1 | Is Mod Managed Table Flag: %2'.[$Station.name, $IsModManaged]"/>
+
+              <do_if value="$IsModManaged">
+                <remove_trade_subscription object="$Station"/>
+                <remove_value name="md.TradeLinkSatellite.TLS_Init_TradeLink.$TLS_ManagedStations.{$Station}"/>
+                <debug_text text="'CASE B: Removed mod subscription and cleared tracking table entry for station: %1'.[$Station.name]"/>
+
+                <add_trade_subscription object="$Station" duration="0h"/>
+                <debug_text text="'CASE B: Re-added 1-hour decaying trade subscription to station: %1'.[$Station.name]"/>
+              </do_if>
+              <remove_value name="$IsModManaged"/>
+            </do_if>
+          </do_for_each>
+        </do_else>
+
+        <remove_value name="$CurrentSector"/>
+        <remove_value name="$HasActiveSatellite"/>
+        <remove_value name="$LocalStations"/>
+      </actions>
+    </cue>
+  </cues>
+</mdscript>

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<wares>
+  <ware id="trade_link_satellite" name="{885422,1}" description="{885422,2}" transport="equipment" volume="1" tags="equipment satellite">
+    <price min="78600" average="104950" max="131300" />
+    <production time="60" amount="1" method="default" name="{20206,101}">
+      <primary>
+        <ware ware="advancedelectronics" amount="50" />
+        <ware ware="energycells" amount="100" />
+        <ware ware="scanningarrays" amount="50" />
+      </primary>
+    </production>
+	<!-- don't know if this is actually needed -->
+    <production time="60" amount="1" method="xenon" name="{20206,601}"  tags="noplayerbuild">
+      <primary>
+		<ware ware="energycells" amount="3600" />
+        <ware ware="silicon" amount="360" />
+      </primary>
+    </production>
+    <production time="60" amount="1" method="terran" name="{20206,901}">
+      <primary>
+        <ware ware="computronicsubstrate" amount="10" />
+        <ware ware="energycells" amount="50" />
+        <ware ware="metallicmicrolattice" amount="78" />
+        <ware ware="siliconcarbide" amount="12" />
+      </primary>
+    </production>
+	<production time="60" amount="1" method="closedloop" name="{20206,1201}">
+      <primary>
+        <ware ware="energycells" amount="170" />
+        <ware ware="hullparts" amount="40" />
+        <ware ware="claytronics" amount="46" />
+      </primary>
+    </production>
+    <component ref="trade_link_satellite_macro" amount="1" />
+    <use threshold="0" />
+  </ware>
+</wares>

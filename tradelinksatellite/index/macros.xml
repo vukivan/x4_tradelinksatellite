@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<diff>
+  <add sel="/index">
+	<entry name="trade_link_satellite_macro" value="extensions\tradelinksatellite\assets\props\equipment\satelite\macros\trade_link_satellite_macro"/>
+  </add>
+</diff>
