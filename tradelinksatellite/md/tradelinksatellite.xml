@@ -106,9 +106,6 @@
           <do_if value="$ListIndex == 0">
             <append_to_list name="md.TradeLinkSatellite.TLS_Init_TradeLink.$TLS_ActiveSectors" exact="$CheckSector"/>
           </do_if>
-          <!-- The sector is in the list -->
-          <do_else>
-          </do_else>
         </do_if>
 
         <!-- No TLS in the sector -->
@@ -117,10 +114,6 @@
           <do_if value="$ListIndex gt 0">
             <remove_from_list name="md.TradeLinkSatellite.TLS_Init_TradeLink.$TLS_ActiveSectors" index="$ListIndex"/>
           </do_if>
-          <!-- The sector is not on the list, so this is probably indication that the state machine is broken, or a wild race condition appeared.-->
-          <do_else>
-              <debug_text text="'LIST MANAGER | Zero satellites remain. Sector %1 not in tracking registry. You're a dummy, how did you get here? Count: %2'.[$CheckSector.name, md.TradeLinkSatellite.TLS_Init_TradeLink.$TLS_ActiveSectors.count]"/>
-          </do_else>
         </do_else>
 
         <remove_value name="$PhysicalSats"/>
